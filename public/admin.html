@@ -153,7 +153,18 @@
     }
 
     function renderQR(qr) {
-      document.getElementById("qr").innerHTML = qr.svg;
+      // qrcode-svg 生成的 SVG 只有固定 width/height，没有 viewBox，
+      // 我们在 CSS 里缩放它时浏览器会按原始 256 渲染并裁剪。
+      // 注入 viewBox + preserveAspectRatio 让它跟随 CSS 尺寸缩放。
+      let svg = qr.svg;
+      if (!/viewBox=/.test(svg)) {
+        const m = svg.match(/<svg[^>]*\swidth="([^"]+)"[^>]*\sheight="([^"]+)"/);
+        if (m) {
+          const w = m[1], h = m[2];
+          svg = svg.replace(/<svg/, `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet"`);
+        }
+      }
+      document.getElementById("qr").innerHTML = svg;
       document.getElementById("panelUrl").textContent = qr.url;
       document.getElementById("copyUrl").onclick = () => {
         navigator.clipboard.writeText(qr.url);

@@ -116,7 +116,10 @@ async function main() {
           color: "#000",
           background: "#fff",
           ecl: "M",
-        }).svg();
+        }).svg()
+          // qrcode-svg 不输出 viewBox，CSS 缩放时会被裁剪——主动注入
+          .replace(/<svg(\s+[^>]*)?>/, (m) =>
+            /viewBox=/.test(m) ? m : m.replace("<svg", '<svg viewBox="0 0 256 256" preserveAspectRatio="xMidYMid meet"'));
         return new Response(JSON.stringify({ url: panelUrl, svg }), {
           headers: { "content-type": "application/json; charset=utf-8" },
         });
