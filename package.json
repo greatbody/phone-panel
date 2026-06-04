@@ -1,0 +1,22 @@
+{
+  "name": "phone-panel",
+  "description": "把旧手机改造成可编程的桌面控制面板：电脑端 WebUI 配置按钮，手机扫码打开网页，点按即触发 macOS 上的 shell / open / AppleScript / 快捷键。",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "dev": "bun --watch src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.9.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "qrcode-svg": "^1.1.0"
+  }
+}

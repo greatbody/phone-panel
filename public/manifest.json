@@ -1,0 +1,9 @@
+{
+  "name": "Phone Panel",
+  "short_name": "Panel",
+  "start_url": "/panel",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020"
+}
