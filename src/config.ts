@@ -9,6 +9,10 @@ const CONFIG_PATH =
   process.env.PHONE_PANEL_CONFIG ??
   join(homedir(), ".config", "phone-panel", "config.json");
 
+const ICONS_DIR =
+  process.env.PHONE_PANEL_ICONS ??
+  join(homedir(), ".config", "phone-panel", "icons");
+
 function randomToken(): string {
   return randomBytes(16).toString("hex");
 }
@@ -68,4 +72,12 @@ export async function saveConfig(cfg: PanelConfig): Promise<void> {
 
 export function getConfigPath(): string {
   return CONFIG_PATH;
+}
+
+export function getIconsDir(): string {
+  return ICONS_DIR;
+}
+
+export function getIconPath(buttonId: string): string {
+  return join(ICONS_DIR, `${buttonId}.png`);
 }

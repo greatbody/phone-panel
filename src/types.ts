@@ -1,9 +1,12 @@
 export type ActionType = "shell" | "open" | "applescript" | "keystroke";
+export type IconType = "emoji" | "image";
 
 export interface PanelButton {
   id: string;
   label: string;
-  icon: string;       // emoji 或单字
+  icon: string;       // iconType=emoji 时是字符；iconType=image 时此字段保留供回退/不显示
+  /** 默认 "emoji"，老配置无此字段时按 emoji 处理 */
+  iconType?: IconType;
   color: string;      // 背景色 hex
   type: ActionType;
   /**

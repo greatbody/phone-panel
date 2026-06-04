@@ -37,13 +37,23 @@
     button:hover { filter: brightness(.96); }
     .btn-list { display: flex; flex-direction: column; gap: 8px; }
     .btn-row { display: grid;
-      grid-template-columns: 28px 44px 1fr 100px 1fr auto; gap: 8px;
+      grid-template-columns: 28px 56px 1fr 100px 1fr auto; gap: 8px;
       align-items: center; padding: 8px; border: 1px solid var(--border);
       border-radius: 10px; background: #fafafa; }
     .btn-row.dragging { opacity: .4; }
     .handle { cursor: grab; color: var(--muted); text-align: center; user-select: none; }
-    .preview { width: 36px; height: 36px; border-radius: 8px; display: flex;
-      align-items: center; justify-content: center; color: #fff; font-size: 22px; }
+    .preview { width: 48px; height: 48px; border-radius: 10px; display: flex;
+      align-items: center; justify-content: center; color: #fff; font-size: 26px;
+      cursor: pointer; position: relative; overflow: hidden; flex-shrink: 0;
+      border: 1px solid transparent; transition: border-color .15s ease; }
+    .preview:hover { border-color: var(--primary); }
+    .preview img { width: 100%; height: 100%; object-fit: contain; }
+    .preview .edit-hint {
+      position: absolute; inset: 0; background: rgba(0,0,0,.55); color: #fff;
+      font-size: 11px; display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity .15s ease;
+    }
+    .preview:hover .edit-hint { opacity: 1; }
     .btn-row input, .btn-row select, .btn-row textarea {
       font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
       width: 100%; background: #fff;
@@ -53,6 +63,38 @@
     .actions { display: flex; gap: 4px; }
     .actions button { padding: 4px 8px; font-size: 12px; }
     .add-bar { margin-top: 12px; display: flex; gap: 8px; justify-content: space-between; }
+
+    /* ---- 图标编辑弹窗 ---- */
+    .modal-mask {
+      position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 50;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal {
+      background: var(--card); border-radius: 12px; width: 100%; max-width: 460px;
+      padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,.2);
+    }
+    .modal h3 { margin: 0 0 14px; font-size: 16px; }
+    .modal .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+      margin-bottom: 14px; }
+    .modal .tab { padding: 8px 14px; border: none; border-bottom: 2px solid transparent;
+      background: transparent; cursor: pointer; color: var(--muted); font: inherit; }
+    .modal .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .modal .body { min-height: 180px; }
+    .modal .row-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .icon-current {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+      padding: 10px; background: #f8fafc; border-radius: 8px;
+    }
+    .icon-current .preview { cursor: default; }
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 28px;
+      text-align: center; color: var(--muted); cursor: pointer;
+      transition: all .15s ease;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary); background: #eff6ff; color: var(--primary);
+    }
+    .drop-zone input[type=file] { display: none; }
     #toast { position: fixed; right: 20px; bottom: 20px; background: #111827; color: #fff;
       padding: 10px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s;
       max-width: 360px; white-space: pre-wrap; }
@@ -179,6 +221,18 @@
       `;
     }
 
+    function renderPreviewInner(b, withHint) {
+      const isImage = b.iconType === "image" && b.id;
+      if (isImage) {
+        // 加 ?v=<hash> 让浏览器在保存图标后强制刷新
+        const v = b._iconVersion || "";
+        return `<img src="/icons/${encodeURIComponent(b.id)}.png?v=${v}" alt="icon" />` +
+          (withHint ? '<div class="edit-hint">编辑</div>' : "");
+      }
+      return `<span>${escapeHtml(b.icon || "·")}</span>` +
+        (withHint ? '<div class="edit-hint">编辑</div>' : "");
+    }
+
     function renderButtons() {
       const list = document.getElementById("btnList");
       list.innerHTML = "";
@@ -193,10 +247,9 @@
         const placeholder = ACTION_TYPES.find(t => t.value === b.type)?.placeholder ?? "";
         row.innerHTML = `
           <div class="handle" title="拖拽排序">≡</div>
-          <div class="preview" style="background:${escapeHtml(b.color)}">${escapeHtml(b.icon || "·")}</div>
-          <div class="row" style="display:grid;grid-template-columns:1fr 80px 50px;gap:4px">
+          <div class="preview" style="background:${escapeHtml(b.color)}" data-act="editIcon">${renderPreviewInner(b, true)}</div>
+          <div class="row" style="display:grid;grid-template-columns:1fr 50px;gap:4px">
             <input data-k="label" value="${escapeHtml(b.label)}" placeholder="标签" />
-            <input data-k="icon" value="${escapeHtml(b.icon)}" placeholder="图标 emoji" maxlength="4" />
             <input data-k="color" type="color" value="${escapeHtml(b.color)}" />
           </div>
           <select data-k="type">${typeOptions}</select>
@@ -213,9 +266,8 @@
           el.addEventListener("input", () => {
             const k = el.dataset.k;
             b[k] = el.value;
-            if (k === "icon" || k === "color") {
+            if (k === "color") {
               row.querySelector(".preview").style.background = b.color;
-              row.querySelector(".preview").textContent = b.icon || "·";
             }
             if (k === "type") {
               const ph = ACTION_TYPES.find(t => t.value === b.type)?.placeholder ?? "";
@@ -224,6 +276,8 @@
             markDirty();
           });
         });
+        // 点 preview 打开图标编辑弹窗
+        row.querySelector('[data-act="editIcon"]').onclick = () => openIconEditor(b, idx);
         // 动作按钮
         row.querySelector('[data-act="del"]').onclick = () => {
           if (!confirm(`删除 "${b.label}"？`)) return;
@@ -327,6 +381,151 @@
     window.addEventListener("beforeunload", (e) => {
       if (dirty) { e.preventDefault(); e.returnValue = ""; }
     });
+
+    // ---------- 图标编辑弹窗 ----------
+    function openIconEditor(btn, idx) {
+      // 如果是新按钮还没保存（无 id），先要求保存
+      if (!btn.id) {
+        toast("新按钮请先点「保存全部更改」，再来编辑图标", "err");
+        return;
+      }
+      if (dirty) {
+        toast("有未保存改动，请先点「保存全部更改」再编辑图标", "err");
+        return;
+      }
+      const mask = document.createElement("div");
+      mask.className = "modal-mask";
+      mask.innerHTML = `
+        <div class="modal" role="dialog">
+          <h3>编辑图标 — ${escapeHtml(btn.label || btn.id)}</h3>
+          <div class="icon-current">
+            <div class="preview" style="background:${escapeHtml(btn.color)}" id="modalPreview">${renderPreviewInner(btn, false)}</div>
+            <div>
+              <div style="font-weight:500">${escapeHtml(btn.label)}</div>
+              <div style="color:var(--muted);font-size:12px">当前：${btn.iconType === "image" ? "图片" : "Emoji"}</div>
+            </div>
+          </div>
+          <div class="tabs">
+            <button class="tab ${btn.iconType !== "image" ? "active" : ""}" data-tab="emoji">Emoji</button>
+            <button class="tab ${btn.iconType === "image" ? "active" : ""}" data-tab="image">图片</button>
+          </div>
+          <div class="body">
+            <div data-pane="emoji" style="${btn.iconType === "image" ? "display:none" : ""}">
+              <label style="display:block;color:var(--muted);font-size:12px;margin-bottom:6px">
+                输入或粘贴 emoji / 单字（推荐 1~2 字符）
+              </label>
+              <input id="emojiInput" type="text" maxlength="4" value="${escapeHtml(btn.icon)}"
+                     style="font:inherit;padding:10px 12px;border:1px solid var(--border);
+                            border-radius:6px;width:100%;font-size:32px;text-align:center" />
+              <div class="hint" style="margin-top:8px">
+                Mac 上按 <code>Ctrl+Cmd+空格</code> 调出 emoji 选择器。
+              </div>
+            </div>
+            <div data-pane="image" style="${btn.iconType === "image" ? "" : "display:none"}">
+              <label class="drop-zone" id="dropZone">
+                <div style="font-size:24px;margin-bottom:6px">📁</div>
+                <div>点击或拖拽图片到这里</div>
+                <div class="hint" style="margin-top:4px">支持 png/jpg/gif/svg/icns；服务器会压到 256×256 PNG</div>
+                <input type="file" id="fileInput" accept="image/*,.icns" />
+              </label>
+              ${btn.iconType === "image" ? `
+                <div style="text-align:center;margin-top:12px">
+                  <button class="ghost" id="removeImageBtn" style="color:var(--danger)">移除图片图标（回退到 emoji）</button>
+                </div>` : ""}
+            </div>
+          </div>
+          <div class="row-buttons">
+            <button class="ghost" data-act="cancel">取消</button>
+            <button class="primary" data-act="ok">完成</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(mask);
+
+      let currentTab = btn.iconType === "image" ? "image" : "emoji";
+      let stagedEmoji = btn.icon;
+
+      function close() { mask.remove(); }
+      mask.addEventListener("click", (e) => { if (e.target === mask) close(); });
+
+      mask.querySelectorAll(".tab").forEach(t => {
+        t.onclick = () => {
+          currentTab = t.dataset.tab;
+          mask.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+          mask.querySelectorAll("[data-pane]").forEach(p => {
+            p.style.display = p.dataset.pane === currentTab ? "" : "none";
+          });
+        };
+      });
+
+      mask.querySelector("#emojiInput")?.addEventListener("input", (e) => {
+        stagedEmoji = e.target.value;
+      });
+
+      const fileInput = mask.querySelector("#fileInput");
+      const dropZone = mask.querySelector("#dropZone");
+      dropZone?.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+      dropZone?.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+      dropZone?.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+        const f = e.dataTransfer.files?.[0];
+        if (f) uploadIcon(f);
+      });
+      fileInput?.addEventListener("change", (e) => {
+        const f = e.target.files?.[0];
+        if (f) uploadIcon(f);
+      });
+
+      async function uploadIcon(file) {
+        try {
+          const fd = new FormData();
+          fd.append("icon", file);
+          const res = await fetch(`/api/admin/buttons/${btn.id}/icon`, { method: "POST", body: fd });
+          if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => "")}`);
+          // 服务器已更新 iconType=image。立即刷新本地 state 并关闭。
+          btn.iconType = "image";
+          btn._iconVersion = Date.now().toString(36); // 防缓存
+          // 不算 dirty，因为已经写盘
+          renderButtons();
+          toast("图标已更新", "ok");
+          close();
+        } catch (e) {
+          toast("上传失败: " + e.message, "err");
+        }
+      }
+
+      mask.querySelector("#removeImageBtn")?.addEventListener("click", async () => {
+        if (!confirm("移除图片图标，回退到 emoji？")) return;
+        try {
+          const res = await fetch(`/api/admin/buttons/${btn.id}/icon`, { method: "DELETE" });
+          if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => "")}`);
+          btn.iconType = "emoji";
+          renderButtons();
+          toast("已移除图片图标", "ok");
+          close();
+        } catch (e) {
+          toast("移除失败: " + e.message, "err");
+        }
+      });
+
+      mask.querySelector('[data-act="cancel"]').onclick = close;
+      mask.querySelector('[data-act="ok"]').onclick = () => {
+        if (currentTab === "emoji") {
+          // emoji 变化需要走保存
+          if (stagedEmoji !== btn.icon) {
+            btn.icon = stagedEmoji;
+            // 如果之前是 image，切回 emoji——但保留图片文件直到下次显式移除
+            if (btn.iconType !== "image") btn.iconType = "emoji";
+            renderButtons();
+            markDirty();
+            toast("emoji 已修改，记得点保存", "ok");
+          }
+        }
+        close();
+      };
+    }
+    // ---------- end 图标编辑 ----------
 
     load().catch((e) => toast("初始化失败: " + e.message, "err"));
   </script>

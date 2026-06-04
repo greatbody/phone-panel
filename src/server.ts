@@ -2,9 +2,10 @@ import { file } from "bun";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import QRCode from "qrcode-svg";
-import { loadConfig, saveConfig, getConfigPath } from "./config";
+import { loadConfig, saveConfig, getConfigPath, getIconPath } from "./config";
 import { executeButton } from "./executor";
 import { getLanIp } from "./net";
+import { deleteIcon, getIconStat, saveIcon } from "./icons";
 import type { PanelButton, PanelConfig } from "./types";
 
 const PUBLIC_DIR = join(import.meta.dir, "..", "public");
@@ -87,10 +88,71 @@ async function main() {
         if (!local) return json({ error: "forbidden" }, 403);
         const body = (await req.json()) as { buttons: PanelButton[] };
         if (!Array.isArray(body.buttons)) return json({ error: "invalid body" }, 400);
-        // 给没有 id 的补 id
-        cfg.buttons = body.buttons.map((b) => ({ ...b, id: b.id || randomUUID() }));
+        // 保留旧按钮 id 集合，找出被删的，删它们的图标
+        const oldIds = new Set(cfg.buttons.map((b) => b.id));
+        const newWithIds = body.buttons.map((b) => ({ ...b, id: b.id || randomUUID() }));
+        const newIds = new Set(newWithIds.map((b) => b.id));
+        const removed = [...oldIds].filter((id) => !newIds.has(id));
+        await Promise.all(removed.map((id) => deleteIcon(id)));
+        cfg.buttons = newWithIds;
         await saveConfig(cfg);
         return json({ ok: true, buttons: cfg.buttons });
+      }
+
+      // 仅本机：上传按钮图标（multipart form, field name = "icon"）
+      // 服务端用 sips 压成 256×256 PNG，存到 ~/.config/phone-panel/icons/<id>.png
+      const iconUploadMatch = path.match(/^\/api\/admin\/buttons\/([^/]+)\/icon$/);
+      if (iconUploadMatch && req.method === "POST") {
+        if (!local) return json({ error: "forbidden" }, 403);
+        const id = iconUploadMatch[1]!;
+        const btn = cfg.buttons.find((b) => b.id === id);
+        if (!btn) return json({ error: "button not found" }, 404);
+        const form = await req.formData();
+        const f = form.get("icon");
+        if (!(f instanceof File)) return json({ error: "missing icon file" }, 400);
+        if (f.size > 10 * 1024 * 1024) return json({ error: "file too large (>10MB)" }, 413);
+        const buf = new Uint8Array(await f.arrayBuffer());
+        const r = await saveIcon(id, buf, f.name || "upload.png");
+        if (!r.ok) return json({ error: r.error ?? "save failed" }, 500);
+        // 标记按钮 iconType=image（不动 icon 字段，保留作为回退）
+        btn.iconType = "image";
+        await saveConfig(cfg);
+        return json({ ok: true, bytes: r.bytes });
+      }
+
+      // 仅本机：删除按钮图标，回退到 emoji
+      if (iconUploadMatch && req.method === "DELETE") {
+        if (!local) return json({ error: "forbidden" }, 403);
+        const id = iconUploadMatch[1]!;
+        const btn = cfg.buttons.find((b) => b.id === id);
+        if (!btn) return json({ error: "button not found" }, 404);
+        await deleteIcon(id);
+        btn.iconType = "emoji";
+        await saveConfig(cfg);
+        return json({ ok: true });
+      }
+
+      // 公开图标读取（手机 Coil + admin 预览都用）。带 ETag 弱验证支持缓存。
+      // 路径形如 /icons/<id> 或 /icons/<id>.png 都支持。
+      if (path.startsWith("/icons/") && req.method === "GET") {
+        const tail = path.slice("/icons/".length);
+        const id = tail.endsWith(".png") ? tail.slice(0, -4) : tail;
+        if (id && !id.includes("/")) {
+          const st = await getIconStat(id);
+          if (!st) return text("not found", 404);
+          const etag = `W/"${st.size}-${Math.floor(st.mtimeMs)}"`;
+          if (req.headers.get("if-none-match") === etag) {
+            return new Response(null, { status: 304, headers: { etag } });
+          }
+          return new Response(file(getIconPath(id)), {
+            headers: {
+              "content-type": "image/png",
+              "cache-control": "public, max-age=60",
+              etag,
+              "last-modified": new Date(st.mtimeMs).toUTCString(),
+            },
+          });
+        }
       }
 
       // 仅本机：重置 token（手机配对作废）
@@ -129,7 +191,7 @@ async function main() {
       const m = path.match(/^\/api\/execute\/([^/]+)$/);
       if (m && req.method === "POST") {
         if (!local && !hasValidToken(req, cfg)) return json({ error: "unauthorized" }, 401);
-        const id = m[1];
+        const id = m[1]!;
         const btn = cfg.buttons.find((b) => b.id === id);
         if (!btn) return json({ error: "button not found" }, 404);
         const result = await executeButton(btn);
