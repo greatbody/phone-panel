@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  phone-panel launchd 模板。
+  使用前替换两处 __USER__、必要时改 PATH / WorkingDirectory。
+  安装:
+    sed "s|__USER__|$USER|g" launchd/com.greatbody.phone-panel.plist \
+      > ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+    launchctl load -w ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.greatbody.phone-panel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/__USER__/.bun/bin/bun</string>
+        <string>run</string>
+        <string>src/server.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/__USER__/code/github/greatbody/phone-panel</string>
+
+    <!-- 让 shell 类型按钮能找到 brew/asdf/code 等命令；按需追加 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/__USER__/.bun/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- 登录后自动启动 -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- 进程崩了自动重启；ThrottleInterval 防止疯狂重启 -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/phone-panel.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/phone-panel.log</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

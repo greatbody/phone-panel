@@ -73,29 +73,42 @@ bun run start
 
 可以直接手改，也可以走 WebUI。
 
-## 开机自启（可选）
+## 开机自启（LaunchAgent）
 
-存为 `~/Library/LaunchAgents/com.greatbody.phone-panel.plist`，然后 `launchctl load`：
+仓库里有现成模板：`launchd/com.greatbody.phone-panel.plist`。一键安装：
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.greatbody.phone-panel</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/bun</string>
-    <string>run</string>
-    <string>/Users/you/code/github/greatbody/phone-panel/src/server.ts</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/phone-panel.log</string>
-  <key>StandardErrorPath</key><string>/tmp/phone-panel.err</string>
-</dict>
-</plist>
+```bash
+# 1) 把 __USER__ 替换成当前用户，写入 LaunchAgents
+sed "s|__USER__|$USER|g" launchd/com.greatbody.phone-panel.plist \
+  > ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+
+# 2) 加载并启用
+launchctl load -w ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+
+# 3) 验证
+launchctl list | grep phone-panel    # 第二列 0 表示上次正常退出
+curl -s http://127.0.0.1:7788/api/admin/config | head -c 80
 ```
+
+常用运维命令：
+
+```bash
+# 重启（改了代码后）
+launchctl kickstart -k gui/$UID/com.greatbody.phone-panel
+
+# 看日志
+tail -f /tmp/phone-panel.log
+
+# 临时停一会
+launchctl unload ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+
+# 完全卸载
+launchctl unload ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+rm ~/Library/LaunchAgents/com.greatbody.phone-panel.plist
+```
+
+模板默认行为：登录后自启 / 崩溃后 5 秒重拉 / 日志写 `/tmp/phone-panel.log`。
+如果 bun 装在别处（不是 `~/.bun/bin/bun`），改模板的 `ProgramArguments` 第一项。
 
 ## 开发
 
