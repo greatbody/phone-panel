@@ -41,7 +41,10 @@
       align-items: center; padding: 8px; border: 1px solid var(--border);
       border-radius: 10px; background: #fafafa; }
     .btn-row.dragging { opacity: .4; }
-    .handle { cursor: grab; color: var(--muted); text-align: center; user-select: none; }
+    .handle { cursor: grab; color: var(--muted); text-align: center; user-select: none;
+      padding: 4px 0; border-radius: 6px; font-size: 18px; line-height: 1; }
+    .handle:hover { background: #e2e8f0; color: var(--text); }
+    .handle:active { cursor: grabbing; }
     .preview { width: 48px; height: 48px; border-radius: 10px; display: flex;
       align-items: center; justify-content: center; color: #fff; font-size: 26px;
       cursor: pointer; position: relative; overflow: hidden; flex-shrink: 0;
@@ -241,13 +244,13 @@
       state.buttons.forEach((b, idx) => {
         const row = document.createElement("div");
         row.className = "btn-row";
-        row.draggable = true;
+        // 拖拽源只挂在 .handle 上（不能整行 draggable，否则在输入框选字会触发拖拽）
         row.dataset.idx = idx;
         const typeOptions = ACTION_TYPES.map(t =>
           `<option value="${t.value}" ${b.type === t.value ? "selected" : ""}>${t.label}</option>`).join("");
         const placeholder = ACTION_TYPES.find(t => t.value === b.type)?.placeholder ?? "";
         row.innerHTML = `
-          <div class="handle" title="拖拽排序">≡</div>
+          <div class="handle" title="按住拖拽排序" draggable="true">≡</div>
           <div class="preview" style="background:${escapeHtml(b.color)}" data-act="editIcon">${renderPreviewInner(b, true)}</div>
           <div class="row" style="display:grid;grid-template-columns:1fr 50px;gap:4px">
             <input data-k="label" value="${escapeHtml(b.label)}" placeholder="标签" />
@@ -306,19 +309,25 @@
             else toast(`✕ ${b.label}: ${r.error || r.stderr || "fail"}`, "err");
           } catch (e) { toast(e.message, "err"); }
         };
-        // 拖拽排序
-        row.addEventListener("dragstart", (e) => {
+        // 拖拽排序：dragstart 只挂在 handle 上；用 setDragImage 把整行作为预览。
+        // row 本身仍要响应 dragover/drop 作为放置目标。
+        const handle = row.querySelector(".handle");
+        handle.addEventListener("dragstart", (e) => {
           row.classList.add("dragging");
           e.dataTransfer.setData("text/plain", String(idx));
           e.dataTransfer.effectAllowed = "move";
+          // 浏览器默认会用 handle 自身那个小图标当 drag image，太丑——用整行替代
+          if (e.dataTransfer.setDragImage) {
+            e.dataTransfer.setDragImage(row, 20, row.offsetHeight / 2);
+          }
         });
-        row.addEventListener("dragend", () => row.classList.remove("dragging"));
+        handle.addEventListener("dragend", () => row.classList.remove("dragging"));
         row.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
         row.addEventListener("drop", (e) => {
           e.preventDefault();
           const from = Number(e.dataTransfer.getData("text/plain"));
           const to = idx;
-          if (from === to) return;
+          if (Number.isNaN(from) || from === to) return;
           const [moved] = state.buttons.splice(from, 1);
           state.buttons.splice(to, 0, moved);
           renderButtons();
